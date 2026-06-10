@@ -90,6 +90,33 @@ const nextConfig: NextConfig = {
     ];
 
     if (isServer) {
+      // Inject ssr-shims into every server entry point so DOM globals
+      // (document, window, etc.) are available before any component module
+      // runs. Without this, `next build`'s prerender worker can evaluate
+      // combobox-controller.js (which accesses document at static field
+      // init time) before instrumentation's register() has run.
+      const origEntry = config.entry;
+      config.entry = async () => {
+        const entries = await (typeof origEntry === 'function' ? origEntry() : origEntry);
+        const shimPath = resolve(
+          import.meta.dirname,
+          "src/lib/lit-dom-shim-adapter.js",
+        );
+        for (const [key, entry] of Object.entries(entries)) {
+          if (key.startsWith('pages/') || key.startsWith('app/')) {
+            if (Array.isArray(entry)) {
+              if (!entry.includes(shimPath)) entry.unshift(shimPath);
+            } else if (typeof entry === 'object' && entry !== null) {
+              const entryObj = entry as { import?: string[] };
+              if (Array.isArray(entryObj.import) && !entryObj.import.includes(shimPath)) {
+                entryObj.import.unshift(shimPath);
+              }
+            }
+          }
+        }
+        return entries;
+      };
+
       // Lit ships dual entry points via package.json "exports" conditions:
       //   - "default"/"browser" → browser versions that set isServer=false
       //   - "node" → SSR versions that set isServer=true and use DOM shims

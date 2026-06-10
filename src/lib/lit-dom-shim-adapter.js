@@ -85,6 +85,41 @@ function installCreateElementTrap() {
   });
 }
 
+// Self-initialize on first import. During `next build`, webpack bundles
+// component modules (e.g. combobox-controller.js) that access `document` at
+// static field init time. The prerender worker may evaluate these modules
+// before instrumentation.ts's register() runs. By calling installWindowOnGlobal
+// at import time, we ensure globalThis.document exists as soon as any module
+// in the bundle pulls in pfe-core's ssr-shims (which imports this adapter).
+const _selfInit = () => {
+  if (globalThis.window === undefined) {
+    const windowObj = {
+      EventTarget,
+      Event: globalThis.Event ?? Event,
+      CustomEvent: globalThis.CustomEvent ?? CustomEvent,
+      Element,
+      HTMLElement,
+      Document,
+      document,
+      CSSStyleSheet,
+      ShadowRoot,
+      CustomElementRegistry,
+      customElements: customElements ?? new CustomElementRegistry(),
+      Node,
+      HTMLSlotElement,
+      IntersectionObserver,
+      MutationObserver,
+      ResizeObserver,
+      location: new URL('http://localhost'),
+      requestAnimationFrame() {},
+      window: undefined,
+    };
+    Object.assign(globalThis, windowObj);
+    installCreateElementTrap();
+  }
+};
+_selfInit();
+
 export const installWindowOnGlobal = (props = {}) => {
   if (globalThis.window === undefined) {
     const windowObj = {

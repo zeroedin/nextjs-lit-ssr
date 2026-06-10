@@ -32,7 +32,7 @@ export async function register() {
   // breaks SSR detection in other packages.
   // See: https://github.com/lit/lit/issues/2391
   // See: next/dist/compiled/next-devtools/index.js
-  (globalThis as Record<string, unknown>).window = globalThis;
+  (globalThis as unknown as Record<string, unknown>).window = globalThis;
 
   // Because window = globalThis makes window.location resolve to
   // globalThis.location (undefined in Node), Next.js getLocationOrigin()
@@ -43,7 +43,7 @@ export async function register() {
   // Note: installWindowOnGlobal already sets location, but it's overwritten
   // when we set window = globalThis (location becomes globalThis.location
   // which is undefined). We re-set it here.
-  (globalThis as Record<string, unknown>).location = new URL(
+  (globalThis as unknown as Record<string, unknown>).location = new URL(
     "http://localhost",
   );
 
@@ -54,7 +54,7 @@ export async function register() {
   // document.querySelector() to find error overlay elements. The ssr-dom-shim's
   // DocumentShim does not provide querySelector.
   // See: next/dist/compiled/next-server/app-page.runtime.dev.js
-  (globalThis.document as Record<string, unknown>).querySelector = function () {
+  (globalThis.document as unknown as Record<string, unknown>).querySelector = function () {
     return null;
   };
 
@@ -63,6 +63,6 @@ export async function register() {
   // namespaceURI for element creation context).
   // Created via our enriched createElement wrapper so it gets style/setAttribute.
   // See: next/dist/compiled/next-devtools/index.js (react-dom-client.production.js)
-  (globalThis.document as Record<string, unknown>).documentElement =
+  (globalThis.document as unknown as Record<string, unknown>).documentElement =
     globalThis.document.createElement("html");
 }
