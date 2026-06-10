@@ -1,0 +1,37 @@
+diff --git a/node_modules/@rhds/elements/elements/rh-progress-stepper/rh-progress-step.js b/node_modules/@rhds/elements/elements/rh-progress-stepper/rh-progress-step.js
+index c01c017..0dc5ac4 100644
+--- a/node_modules/@rhds/elements/elements/rh-progress-stepper/rh-progress-step.js
++++ b/node_modules/@rhds/elements/elements/rh-progress-stepper/rh-progress-step.js
+@@ -53,6 +53,7 @@ let RhProgressStep = class RhProgressStep extends LitElement {
+     connectedCallback() {
+         super.connectedCallback();
+         this.role = 'listitem';
++        this.computeIcon();
+     }
+     render() {
+         const compact = this.compact ?? false;
+diff --git a/node_modules/@rhds/elements/elements/rh-progress-stepper/rh-progress-stepper.js b/node_modules/@rhds/elements/elements/rh-progress-stepper/rh-progress-stepper.js
+index fa1cb86..26241a5 100644
+--- a/node_modules/@rhds/elements/elements/rh-progress-stepper/rh-progress-stepper.js
++++ b/node_modules/@rhds/elements/elements/rh-progress-stepper/rh-progress-stepper.js
+@@ -119,7 +119,7 @@ let RhProgressStepper = class RhProgressStepper extends LitElement {
+         /**
+          * Set to match current step's `state`
+          */
+-        this.currentState = '';
++        this.currentState = undefined;
+         _RhProgressStepper_maxWidth.set(this, 768);
+         /**
+          * Normalized string content of the current step
+@@ -176,9 +176,9 @@ let RhProgressStepper = class RhProgressStepper extends LitElement {
+     render() {
+         const compact = this.compact ?? false;
+         const vertical = this.orientation === 'vertical' || this.mobile;
+-        const currentState = this.currentState || '';
++        const currentState = this.currentState;
+         return html `
+-      <div id="container" class="${classMap({ compact, vertical, [currentState]: true })}">
++      <div id="container" class="${classMap({ compact, vertical, ...(currentState ? { [currentState]: true } : {}) })}">
+         <!-- "Current step" label for screen readers and compact display -->
+         <!-- Visually hidden except in compact mode -->
+         <strong id="current-step"

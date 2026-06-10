@@ -6,20 +6,28 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "postinstall": "patch-package"
   },
   "dependencies": {
+    "@lit-labs/nextjs": "^0.2.4",
+    "@lit-labs/ssr-react": "^0.3.4",
+    "@lit/react": "^1.0.8",
+    "@rhds/elements": "^4.1.4",
+    "@rhds/icons": "^2.2.0",
+    "@rhds/tokens": "^3.1.0",
+    "next": "15.5.19",
     "react": "19.1.0",
-    "react-dom": "19.1.0",
-    "next": "15.5.19"
+    "react-dom": "19.1.0"
   },
   "devDependencies": {
-    "typescript": "^5",
+    "@eslint/eslintrc": "^3",
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "eslint": "^9",
     "eslint-config-next": "15.5.19",
-    "@eslint/eslintrc": "^3"
+    "patch-package": "^8.0.1",
+    "typescript": "^5"
   }
 }
