@@ -60,7 +60,7 @@ npm start
 
 ## Key constraints
 
-- **Webpack only (Next.js 15).** `@lit-labs/nextjs` v0.2.4 relies on `imports-loader`, a webpack-specific loader. Turbopack support has been merged upstream ([lit/lit#5342](https://github.com/lit/lit/pull/5342), closes [lit/lit#5209](https://github.com/lit/lit/issues/5209)) but has not been published to npm yet. Watch for a new `@lit-labs/nextjs` release to use Turbopack with Next.js 16.
+- **Webpack only (Next.js 15).** `@lit-labs/nextjs` v0.2.4 relies on `imports-loader`, a webpack-specific loader. The Lit team merged Turbopack support upstream ([lit/lit#5342](https://github.com/lit/lit/pull/5342), closes [lit/lit#5209](https://github.com/lit/lit/issues/5209)) but has not published it to npm yet. Watch for a new `@lit-labs/nextjs` release to use Turbopack with Next.js 16.
 - **`transpilePackages`.** Lit and RHDS packages ship as ES modules with decorators and top-level `await`. List them in `transpilePackages` in `next.config.ts` or the server build fails with "Module not found" or "Unexpected token" errors. This also causes webpack to duplicate modules across bundle chunks, which is why the [createElement wrapper](#why-the-wrapper-keeps-disappearing) needs the `Object.defineProperty` approach.
 - **`"node"` condition.** The server compiler's `resolve.conditionNames` includes `"node"` so webpack resolves Lit's SSR-safe entry points instead of falling through to browser bundles.
 - **DOM shim replacement.** Lit's built-in DOM shim pulls in `node-fetch`, which uses `node:` protocol imports that webpack cannot bundle. The [DOM shim adapter](#dom-shim-adapter) replaces it with one sourced from `@lit-labs/ssr-dom-shim`. The adapter also [enriches `createElement`](#createelement-enrichment) with methods Next.js DevTools expects.
@@ -77,9 +77,9 @@ Lit provides a DOM shim (`@lit-labs/ssr/lib/dom-shim.js`), but it drags in `node
 
 The adapter replaces Lit's DOM shim with one that provides the same fake browser APIs but pulls them from `@lit-labs/ssr-dom-shim`, a lighter package with no `node-fetch` dependency. A webpack alias in `next.config.ts` redirects all imports of `@lit-labs/ssr/lib/dom-shim.js` to the adapter, so nothing in the dependency tree ever reaches `node-fetch`.
 
-> **Upstream fix.** The root cause is in `@patternfly/pfe-core`'s `ssr-shims.js`, which imports `installWindowOnGlobal` from `@lit-labs/ssr/lib/dom-shim.js`. That module pulls in `node-fetch` for its `fetch` shim — functionality `ssr-shims.js` doesn't use. If `pfe-core` imported from `@lit-labs/ssr-dom-shim` instead (which exports the same DOM shim classes without the `node-fetch` dependency), the `node:` protocol error would disappear and the webpack alias workaround in this project would no longer be necessary.
+> **Upstream fix.** The root cause is in `@patternfly/pfe-core`'s `ssr-shims.js`, which imports `installWindowOnGlobal` from `@lit-labs/ssr/lib/dom-shim.js`. That module pulls in `node-fetch` for its `fetch` shim, which `ssr-shims.js` does not use. If `pfe-core` imported from `@lit-labs/ssr-dom-shim` instead (which exports the same DOM shim classes without the `node-fetch` dependency), the `node:` protocol error would disappear and the webpack alias workaround in this project would no longer be necessary.
 >
-> The current `pfe-core` setup works fine for web components outside of Next.js. The issue only manifests here because Next.js bundles server-side code with webpack rather than running it directly in Node.js. In a plain Node runtime, `node-fetch`'s `node:` protocol imports resolve natively. webpack 5 treats `node:` as an unhandled scheme and fails at build time. This is a PatternFly Elements issue and can be looked at upstream.
+> The current `pfe-core` setup works fine for web components outside of Next.js. The issue only manifests here because Next.js bundles server-side code with webpack rather than running it directly in Node.js. In a plain Node runtime, `node-fetch`'s `node:` protocol imports resolve without issue. webpack 5 treats `node:` as an unhandled scheme and fails at build time. The PatternFly Elements team could fix this upstream.
 
 ### createElement enrichment
 
@@ -89,13 +89,13 @@ The adapter wraps `document.createElement` so every element it returns has these
 
 ### Why the wrapper keeps disappearing
 
-`pfe-core` (the foundation library under RHDS components) ships its own SSR shims. Part of that setup is assigning `document.createElement` to its own implementation. This is normal module code. In Node.js or a browser, the module loads once and the assignment runs once. No problem.
+`pfe-core` (the foundation library under RHDS components) ships its own SSR shims. Part of that setup is assigning `document.createElement` to its own implementation. In Node.js or a browser, the module loads once and the assignment runs once.
 
-Next.js uses webpack for bundling, and this project lists `@patternfly/pfe-core` in `transpilePackages` so webpack can process it. Webpack's code splitting can duplicate a module across multiple bundle chunks. Each chunk gets its own copy of `pfe-core`'s SSR shims, and each copy runs `document.createElement = myVersion` independently when it loads. The module was written to run once. Webpack makes it run several times.
+Next.js uses webpack for bundling, and this project lists `@patternfly/pfe-core` in `transpilePackages` so webpack can process it. Webpack's code splitting can duplicate a module across multiple bundle chunks. Each chunk gets its own copy of `pfe-core`'s SSR shims, and each copy runs `document.createElement = myVersion` when it loads. The module assumes single execution. Webpack breaks that assumption.
 
 Each of those runs overwrites whatever `document.createElement` was set to before. If the adapter sets its enriched wrapper with a normal assignment, the next chunk to load replaces it. The wrapper is gone, the methods are missing, and the `TypeError` crashes return.
 
-The adapter works around this by using `Object.defineProperty` instead of a normal assignment. It defines a custom setter and getter on `document.createElement`. When any chunk writes `document.createElement = myVersion`, the setter quietly stores that function. But when anything reads `document.createElement`, the getter returns the adapter's wrapper around the stored function. The chunks think they're replacing `createElement`. The adapter keeps its wrapper on top.
+The adapter works around this by using `Object.defineProperty` instead of a normal assignment. It defines a custom setter and getter on `document.createElement`. When any chunk writes `document.createElement = myVersion`, the setter stores that function. But when anything reads `document.createElement`, the getter returns the adapter's wrapper around the stored function. The chunks think they're replacing `createElement`. The adapter keeps its wrapper on top.
 
 ## Instrumentation
 
@@ -113,17 +113,17 @@ Next.js calls `register()` in this file before the server starts handling reques
 
 `patches/@rhds+elements+4.1.4.patch`
 
-Two bugs in `rh-progress-stepper` that only surface in the Next.js integration. Neither has been fixed upstream as of v4.2.2. Both are applied via `patch-package` on `npm install`.
+Two bugs in `rh-progress-stepper` that only surface in the Next.js integration. Neither is fixed upstream as of v4.2.2. `patch-package` applies both on `npm install`.
 
 These components work fine as standard web components and under Lit's own SSR. The bugs appear because of a lifecycle difference in how `@lit-labs/ssr-react` renders components.
 
-Lit's own SSR deliberately skips `connectedCallback` on the server. Their [authoring docs](https://lit.dev/docs/ssr/authoring/) state that only `constructor()`, `render()`, and `willUpdate()` run during SSR. `connectedCallback`, `update`, `updated`, and `firstUpdated` are all skipped. This is intentional — component authors often call browser APIs or depend on reactive update timing in these methods.
+Lit's own SSR skips `connectedCallback` on the server. Their [authoring docs](https://lit.dev/docs/ssr/authoring/) state that only `constructor()`, `render()`, and `willUpdate()` run during SSR. The Lit team skips `connectedCallback`, `update`, `updated`, and `firstUpdated` because component authors often call browser APIs or depend on reactive update timing in these methods.
 
-`@lit-labs/ssr-react` takes a different approach. Its `render-custom-element.js` always calls `renderer.connectedCallback()` (line 62), then immediately calls `renderShadow()`. This means code in `connectedCallback` runs during SSR, but the reactive update cycle that normally follows it in a browser does not. Components that do setup work in `connectedCallback` and rely on the reactive cycle to finish that work before the first render break under this path.
+`@lit-labs/ssr-react` takes a different approach. Its `render-custom-element.js` always calls `renderer.connectedCallback()` (line 62), then calls `renderShadow()` with no microtask queue in between. This means code in `connectedCallback` runs during SSR, but the reactive update cycle that normally follows it in a browser does not. Components that do setup work in `connectedCallback` and rely on the reactive cycle to finish that work before the first render break under this path.
 
-No upstream issue has been filed for this inconsistency. The closest is [lit/lit#5175](https://github.com/lit/lit/issues/5175), which added an opt-in `connectedCallback` to Lit's own SSR — reinforcing that calling it is not the default.
+No one has filed an upstream issue for this inconsistency. The closest is [lit/lit#5175](https://github.com/lit/lit/issues/5175), which added an opt-in `connectedCallback` to Lit's own SSR — reinforcing that calling it is not the default.
 
-React's hydration also compares server and client markup strictly, so discrepancies that browsers silently normalize (like an empty CSS class) become hydration mismatch warnings.
+React's hydration also compares server and client markup strictly, so discrepancies that browsers normalize (like an empty CSS class) become hydration mismatch warnings.
 
 **`rh-progress-step`: missing icon on server render.** `connectedCallback` sets `this.role` but never calls `this.computeIcon()`. In a browser, the reactive update computes the icon before paint. Under `ssr-react`, `connectedCallback` runs but the reactive update never fires, so the icon markup is missing from the Declarative Shadow DOM output. The patch adds `this.computeIcon()` to `connectedCallback`.
 
