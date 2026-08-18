@@ -75,6 +75,10 @@ Lit provides a DOM shim (`@lit-labs/ssr/lib/dom-shim.js`), but it drags in `node
 
 The adapter replaces Lit's DOM shim with one that provides the same fake browser APIs but pulls them from `@lit-labs/ssr-dom-shim`, a lighter package with no `node-fetch` dependency. A webpack alias in `next.config.ts` redirects all imports of `@lit-labs/ssr/lib/dom-shim.js` to the adapter, so nothing in the dependency tree ever reaches `node-fetch`.
 
+> **Upstream fix.** The root cause is in `@patternfly/pfe-core`'s `ssr-shims.js`, which imports `installWindowOnGlobal` from `@lit-labs/ssr/lib/dom-shim.js`. That module pulls in `node-fetch` for its `fetch` shim — functionality `ssr-shims.js` doesn't use. If `pfe-core` imported from `@lit-labs/ssr-dom-shim` instead (which exports the same DOM shim classes without the `node-fetch` dependency), the `node:` protocol error would disappear and the webpack alias workaround in this project would no longer be necessary.
+>
+> The current `pfe-core` setup works fine for web components outside of Next.js. The issue only manifests here because Next.js bundles server-side code with webpack rather than running it directly in Node.js. In a plain Node runtime, `node-fetch`'s `node:` protocol imports resolve natively. webpack 5 treats `node:` as an unhandled scheme and fails at build time. This is a PatternFly Elements issue and can be looked at upstream.
+
 ### createElement enrichment
 
 The adapter also solves a second problem. Lit's DOM shim creates minimal fake elements. They have just enough API surface for Lit's own rendering. Next.js DevTools (bundled React DOM) expects more: it calls `setAttribute`, `style`, and `appendChild` on elements during server rendering. When those methods are missing, every request crashes with a `TypeError`.
@@ -109,8 +113,16 @@ Next.js calls `register()` in this file before the server starts handling reques
 
 Two bugs in `rh-progress-stepper` that only surface in the Next.js integration. Neither has been fixed upstream as of v4.2.2. Both are applied via `patch-package` on `npm install`.
 
-These components work fine as standard web components and under Lit's own SSR. The bugs appear because `@lit-labs/ssr-react` renders Lit components through a different path: it calls `connectedCallback()`, then immediately calls `renderShadow()` with no microtask queue in between (see `render-custom-element.js`). In a browser, Lit's reactive update cycle runs between `connectedCallback` and the next paint, giving properties time to settle and triggering a corrective re-render. The React integration skips that window. React's hydration also compares server and client markup strictly, so discrepancies that browsers silently normalize (like an empty CSS class) become hydration mismatch warnings.
+These components work fine as standard web components and under Lit's own SSR. The bugs appear because of a lifecycle difference in how `@lit-labs/ssr-react` renders components.
 
-**`rh-progress-step`: missing icon on server render.** `connectedCallback` sets `this.role` but never calls `this.computeIcon()`. In a browser, the reactive update computes the icon before paint. Through the React SSR path, `renderShadow()` runs before that update can fire, so the icon markup is missing from the Declarative Shadow DOM output. The patch adds `this.computeIcon()` to `connectedCallback`.
+Lit's own SSR deliberately skips `connectedCallback` on the server. Their [authoring docs](https://lit.dev/docs/ssr/authoring/) state that only `constructor()`, `render()`, and `willUpdate()` run during SSR. `connectedCallback`, `update`, `updated`, and `firstUpdated` are all skipped. This is intentional — component authors often call browser APIs or depend on reactive update timing in these methods.
+
+`@lit-labs/ssr-react` takes a different approach. Its `render-custom-element.js` always calls `renderer.connectedCallback()` (line 62), then immediately calls `renderShadow()`. This means code in `connectedCallback` runs during SSR, but the reactive update cycle that normally follows it in a browser does not. Components that do setup work in `connectedCallback` and rely on the reactive cycle to finish that work before the first render break under this path.
+
+No upstream issue has been filed for this inconsistency. The closest is [lit/lit#5175](https://github.com/lit/lit/issues/5175), which added an opt-in `connectedCallback` to Lit's own SSR — reinforcing that calling it is not the default.
+
+React's hydration also compares server and client markup strictly, so discrepancies that browsers silently normalize (like an empty CSS class) become hydration mismatch warnings.
+
+**`rh-progress-step`: missing icon on server render.** `connectedCallback` sets `this.role` but never calls `this.computeIcon()`. In a browser, the reactive update computes the icon before paint. Under `ssr-react`, `connectedCallback` runs but the reactive update never fires, so the icon markup is missing from the Declarative Shadow DOM output. The patch adds `this.computeIcon()` to `connectedCallback`.
 
 **`rh-progress-stepper`: empty string as CSS class.** `currentState` initializes to `''`. The `render` method passes `[currentState]: true` into `classMap`, which adds an empty string as a CSS class. Browsers ignore this. React's hydration flags it as a server/client mismatch because the client normalizes the class list. The patch changes the initial value to `undefined` and guards the `classMap` entry so it only includes `currentState` when truthy.
