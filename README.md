@@ -61,9 +61,11 @@ npm start
 ## Key constraints
 
 - **Webpack only (Next.js 15).** `@lit-labs/nextjs` v0.2.4 relies on `imports-loader`, a webpack-specific loader. Turbopack support has been merged upstream ([lit/lit#5342](https://github.com/lit/lit/pull/5342), closes [lit/lit#5209](https://github.com/lit/lit/issues/5209)) but has not been published to npm yet. Watch for a new `@lit-labs/nextjs` release to use Turbopack with Next.js 16.
-- **`transpilePackages`.** Lit and RHDS packages ship as ES modules with decorators and top-level `await`. List them in `transpilePackages` in `next.config.ts` or the server build fails with "Module not found" or "Unexpected token" errors.
+- **`transpilePackages`.** Lit and RHDS packages ship as ES modules with decorators and top-level `await`. List them in `transpilePackages` in `next.config.ts` or the server build fails with "Module not found" or "Unexpected token" errors. This also causes webpack to duplicate modules across bundle chunks, which is why the [createElement wrapper](#why-the-wrapper-keeps-disappearing) needs the `Object.defineProperty` approach.
 - **`"node"` condition.** The server compiler's `resolve.conditionNames` includes `"node"` so webpack resolves Lit's SSR-safe entry points instead of falling through to browser bundles.
-- **DOM shim timing.** Some RHDS controllers access `document` at static field init time, before `register()` runs. The shim adapter self-initializes on import, and `next.config.ts` injects it into server entry points to guarantee globals exist early enough.
+- **DOM shim replacement.** Lit's built-in DOM shim pulls in `node-fetch`, which uses `node:` protocol imports that webpack cannot bundle. The [DOM shim adapter](#dom-shim-adapter) replaces it with one sourced from `@lit-labs/ssr-dom-shim`. The adapter also [enriches `createElement`](#createelement-enrichment) with methods Next.js DevTools expects.
+- **DOM shim timing.** Some RHDS controllers access `document` at static field init time, before `register()` runs. The shim adapter self-initializes on import, and `next.config.ts` injects it into server entry points. The [Instrumentation](#instrumentation) file loads SSR shims and patches additional globals (`window`, `querySelector`, `documentElement`) for Next.js DevTools compatibility.
+- **`ssr-react` lifecycle.** `@lit-labs/ssr-react` calls `connectedCallback()` during server rendering, while Lit's own SSR [skips it by design](https://lit.dev/docs/ssr/authoring/). This causes components that do setup in `connectedCallback` and rely on the reactive update cycle to break. See [Patches](#patches) for the workarounds.
 
 ## DOM shim adapter
 
